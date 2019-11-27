@@ -45,6 +45,7 @@ flags.DEFINE_string(
     'to be used for training and evaluation.')
 flags.DEFINE_integer('train_batch_size', 32, 'Batch size for training.')
 flags.DEFINE_integer('eval_batch_size', 32, 'Batch size for evaluation.')
+flags.DEFINE_boolean('fp16', False, 'fp16')
 
 common_flags.define_common_bert_flags()
 
@@ -54,6 +55,10 @@ FLAGS = flags.FLAGS
 def main(_):
   # Users should always run this script under TF 2.x
   assert tf.version.VERSION.startswith('2.')
+
+  gpus = tf.config.experimental.list_physical_devices('GPU')
+  assert len(gpus) > 0
+  tf.config.experimental.set_memory_growth(gpus[0], True)
 
   # args
   with tf.io.gfile.GFile(FLAGS.input_meta_data_path, 'rb') as reader:
@@ -92,6 +97,9 @@ def main(_):
       share_parameter_across_layers=FLAGS.share_parameter_across_layers))
   optimizer = optimization.create_optimizer(
     FLAGS.learning_rate, steps_per_epoch * epochs, warmup_steps)
+  if FLAGS.fp16:
+    optimizer = tf.train.experimental.enable_mixed_precision_graph_rewrite(
+      optimizer)
 
   @tf.function
   def classification_loss(labels, logits):
