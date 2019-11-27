@@ -33,6 +33,7 @@ from bert.bert_classifier import bert_classifier_model
 from optimization import bert_optimization as optimization
 from flags import common_bert_flags as common_flags
 from data import bert_classifier_dataset
+from loss.bert_loss import get_classification_loss_fn
 
 flags.DEFINE_string('train_data_path', None,
                     'Path to training data for BERT classifier.')
@@ -101,17 +102,7 @@ def main(_):
     optimizer = tf.train.experimental.enable_mixed_precision_graph_rewrite(
       optimizer)
 
-  @tf.function
-  def classification_loss(labels, logits):
-    """Classification loss."""
-    labels = tf.squeeze(labels)
-    log_probs = tf.nn.log_softmax(logits, axis=-1)
-    one_hot_labels = tf.one_hot(
-        tf.cast(labels, dtype=tf.int32), depth=num_classes, dtype=tf.float32)
-    per_example_loss = -tf.reduce_sum(
-        tf.cast(one_hot_labels, dtype=tf.float32) * log_probs, axis=-1)
-    loss = tf.reduce_mean(per_example_loss)
-    return loss
+  loss_fn = get_classification_loss_fn(num_classes)
 
   # initialize bert core model
   if FLAGS.init_checkpoint:
@@ -150,7 +141,7 @@ def main(_):
     x_batch_train, y_batch_train = next(train_iter)
     with tf.GradientTape() as tape:
       logits = classifier_model(x_batch_train)
-      loss = classification_loss(y_batch_train, logits)
+      loss = loss_fn(y_batch_train, logits)
     grads = tape.gradient(loss, classifier_model.trainable_weights)
     optimizer.apply_gradients(zip(grads, classifier_model.trainable_weights))
     train_loss_metric.update_state(loss)
