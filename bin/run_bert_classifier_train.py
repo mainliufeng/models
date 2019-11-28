@@ -155,7 +155,7 @@ def main(_):
   def eval_one_step(eval_iter):
     x_batch_val, y_batch_val = next(eval_iter)
     val_logits = classifier_model(x_batch_val)
-    loss = classification_loss(y_batch_val, val_logits)
+    loss = tf.function(classification_loss(y_batch_val, val_logits))
     eval_loss_metric.update_state(loss)
     eval_acc_metric.update_state(y_batch_val, val_logits)
 
