@@ -30,10 +30,10 @@ import tensorflow as tf
 
 from bert import bert_modeling as modeling
 from bert.bert_classifier import bert_classifier_model
-from optimization import bert_optimization as optimization
+from optimization.optimizers import create_optimizer
 from flags import common_bert_flags as common_flags
 from data import bert_classifier_dataset
-from loss.bert_loss import get_classification_loss_fn
+from loss.losses import get_loss_fn
 
 flags.DEFINE_string('train_data_path', None,
                     'Path to training data for BERT classifier.')
@@ -47,6 +47,7 @@ flags.DEFINE_string(
 flags.DEFINE_integer('train_batch_size', 32, 'Batch size for training.')
 flags.DEFINE_integer('eval_batch_size', 32, 'Batch size for evaluation.')
 flags.DEFINE_boolean('fp16', False, 'fp16')
+flags.DEFINE_string('loss', None, 'loss')
 
 common_flags.define_common_bert_flags()
 
@@ -88,6 +89,16 @@ def main(_):
     is_training=False,
     drop_remainder=False)
 
+  config = {}
+  config['lr_warmup'] = True
+  config['num_warmup_steps'] = warmup_steps
+  config['lr_decay'] = 'polynomial'
+  config['lr'] = FLAGS.learning_rate
+  config['end_lr'] = 0.0
+  config['num_train_steps'] = steps_per_epoch * epochs
+  config['loss'] = FLAGS.loss
+  config['num_classes'] = num_classes
+
   # model
   classifier_model, bert_core_model = (
     bert_classifier_model(
@@ -96,13 +107,13 @@ def main(_):
       num_classes,
       max_seq_length,
       share_parameter_across_layers=FLAGS.share_parameter_across_layers))
-  optimizer = optimization.create_optimizer(
-    FLAGS.learning_rate, steps_per_epoch * epochs, warmup_steps)
+  optimizer, learning_rate_fn = create_optimizer(config)
   if FLAGS.fp16:
     optimizer = tf.train.experimental.enable_mixed_precision_graph_rewrite(
       optimizer)
 
-  loss_fn = get_classification_loss_fn(num_classes)
+  loss_fn = get_loss_fn(config)
+  loss_fn = tf.function(loss_fn)
 
   # initialize bert core model
   if FLAGS.init_checkpoint:
@@ -155,7 +166,7 @@ def main(_):
   def eval_one_step(eval_iter):
     x_batch_val, y_batch_val = next(eval_iter)
     val_logits = classifier_model(x_batch_val)
-    loss = tf.function(classification_loss(y_batch_val, val_logits))
+    loss = loss_fn(y_batch_val, val_logits)
     eval_loss_metric.update_state(loss)
     eval_acc_metric.update_state(y_batch_val, val_logits)
 
@@ -177,6 +188,7 @@ def main(_):
     with train_summary_writer.as_default():
       tf.summary.scalar('loss', train_loss, step=step)
       tf.summary.scalar('accuracy', train_acc, step=step)
+      tf.summary.scalar('learning_rate', float(learning_rate_fn(step)), step=step)
 
     if (current_step % steps_per_eval == 0
         or current_step >= total_training_steps):
