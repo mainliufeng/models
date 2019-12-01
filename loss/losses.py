@@ -16,6 +16,7 @@ def get_loss_fn(**config):
 
 
 def get_classification_loss(config):
+  @tf.function
   def classification_loss(labels, logits):
     labels = tf.squeeze(labels)
     log_probs = tf.nn.log_softmax(logits, axis=-1)
@@ -29,6 +30,7 @@ def get_classification_loss(config):
 
 
 def get_cross_entropy_loss(config):
+  @tf.function
   def cross_entropy_loss(labels, logits):
     per_example_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
       logits=logits, labels=tf.stop_gradient(labels))
@@ -38,6 +40,7 @@ def get_cross_entropy_loss(config):
 
 
 def get_focal_loss_multi_v1(config):
+  @tf.function
   def focal_loss_multi_v1(labels, logits):
     gamma = config.get("gamma", 2.0)
     labels = tf.cast(tf.expand_dims(labels, -1), tf.int32)

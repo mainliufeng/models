@@ -130,7 +130,6 @@ def main(_):
     loss=None,
     num_train_steps=num_train_steps,
     num_classes=num_classes)
-  loss_fn = tf.function(loss_fn)
 
   # initialize bert core model
   if FLAGS.init_checkpoint:
@@ -188,7 +187,7 @@ def main(_):
 
   total_training_steps = steps_per_epoch * epochs
 
-  steps_per_train = 10
+  steps_per_train = 100
   steps_per_eval = 1000
   current_step = int(checkpoint.step)
   while current_step < total_training_steps:
