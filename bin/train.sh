@@ -13,5 +13,4 @@ python /home/liufeng/Code/github/models/bin/run_bert_classifier_train.py \
   --learning_rate=1e-4 \
   --num_train_epochs=5 \
   --share_parameter_across_layers=true \
-  --loss=focal \
   --model_dir=$MODEL_DIR/lcqmc/albert/tf2/train

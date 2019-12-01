@@ -47,7 +47,6 @@ flags.DEFINE_string(
 flags.DEFINE_integer('train_batch_size', 32, 'Batch size for training.')
 flags.DEFINE_integer('eval_batch_size', 32, 'Batch size for evaluation.')
 flags.DEFINE_boolean('fp16', False, 'fp16')
-flags.DEFINE_string('loss', None, 'loss')
 
 common_flags.define_common_bert_flags()
 
@@ -71,18 +70,17 @@ def main(_):
   num_classes = input_meta_data['num_labels']
 
   bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
-  epochs = FLAGS.num_train_epochs
+  epochs = int(FLAGS.num_train_epochs)
   steps_per_epoch = int(train_data_size / FLAGS.train_batch_size)
-  num_train_steps = steps_per_epoch * epochs
   steps_per_eval_epoch = int(math.ceil(eval_data_size / FLAGS.eval_batch_size))
-  warmup_steps = int(epochs * train_data_size * 0.1 / FLAGS.train_batch_size)
+  num_train_steps = steps_per_epoch * epochs
+  warmup_steps = num_train_steps * 0.1
 
   # dataset
   training_dataset = bert_classifier_dataset.create_classifier_dataset(
     FLAGS.train_data_path,
     seq_length=max_seq_length,
     batch_size=FLAGS.train_batch_size)
-  train_iter = iter(training_dataset)
   evaluation_dataset = bert_classifier_dataset.create_classifier_dataset(
     FLAGS.eval_data_path,
     seq_length=max_seq_length,
@@ -121,6 +119,7 @@ def main(_):
       epsilon=1e-6,
       exclude_from_weight_decay=['layer_norm', 'bias'])
 
+  # fp16
   if FLAGS.fp16:
     optimizer = tf.train.experimental.enable_mixed_precision_graph_rewrite(
       optimizer)
@@ -137,113 +136,35 @@ def main(_):
     checkpoint = tf.train.Checkpoint(model=bert_core_model)
     checkpoint.restore(FLAGS.init_checkpoint).assert_nontrivial_match()
 
-  # initialize or load classifier model
-  step = tf.Variable(1, name="step", dtype=tf.int64)
-  checkpoint_path = os.path.join(FLAGS.model_dir, 'checkpoint')
-  checkpoint = tf.train.Checkpoint(
-    step=step, optimizer=optimizer, model=classifier_model)
-  manager = tf.train.CheckpointManager(checkpoint, FLAGS.model_dir, max_to_keep=3)
-  checkpoint.restore(manager.latest_checkpoint)
-  if manager.latest_checkpoint:
-    logging.info('Checkpoint restored from %s.', manager.latest_checkpoint)
-  else:
-    logging.info('Checkpoint initializing from scratch.')
-
-  # scalar
-  summary_dir = os.path.join(FLAGS.model_dir, 'summaries')
-  train_summary_writer = tf.summary.create_file_writer(summary_dir + '/train')
-  test_summary_writer = tf.summary.create_file_writer(summary_dir + '/test')
-
   # metrics
-  train_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
-  eval_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
-  train_loss_metric = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
-  eval_loss_metric = tf.keras.metrics.Mean('eval_loss', dtype=tf.float32)
+  def metric_fn():
+    return [
+      tf.keras.metrics.SparseCategoricalAccuracy('accuracy', dtype=tf.float32),
+    ]
 
-  @tf.function
-  def train_for_steps(train_iter, steps):
-    for _ in tf.range(steps):
-      train_one_step(train_iter)
+  classifier_model.compile(optimizer=optimizer, loss=loss_fn, metrics=[metric_fn()])
 
-  def train_one_step(train_iter):
-    x_batch_train, y_batch_train = next(train_iter)
-    with tf.GradientTape() as tape:
-      logits = classifier_model(x_batch_train)
-      loss = loss_fn(y_batch_train, logits)
-    grads = tape.gradient(loss, classifier_model.trainable_weights)
-    optimizer.apply_gradients(zip(grads, classifier_model.trainable_weights))
-    train_loss_metric.update_state(loss)
-    train_acc_metric.update_state(y_batch_train, logits)
+  # callbacks
+  summary_dir = os.path.join(FLAGS.model_dir, 'summaries')
+  summary_callback = tf.keras.callbacks.TensorBoard(summary_dir)
+  checkpoint_path = os.path.join(FLAGS.model_dir, 'checkpoint')
+  checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+      checkpoint_path, save_weights_only=True)
 
-  @tf.function
-  def eval_for_steps(eval_iter, steps):
-    for _ in tf.range(steps):
-      eval_one_step(eval_iter)
+  custom_callbacks = [
+    summary_callback,
+    checkpoint_callback,
+  ]
 
-  def eval_one_step(eval_iter):
-    x_batch_val, y_batch_val = next(eval_iter)
-    val_logits = classifier_model(x_batch_val)
-    loss = loss_fn(y_batch_val, val_logits)
-    eval_loss_metric.update_state(loss)
-    eval_acc_metric.update_state(y_batch_val, val_logits)
+  classifier_model.fit(
+      x=training_dataset,
+      validation_data=evaluation_dataset,
+      steps_per_epoch=steps_per_epoch,
+      epochs=epochs,
+      validation_steps=steps_per_eval_epoch,
+      callbacks=custom_callbacks)
 
-  total_training_steps = steps_per_epoch * epochs
-
-  steps_per_train = 10
-  steps_per_eval = 1000
-  current_step = int(step)
-  while current_step < total_training_steps:
-    steps = steps_to_run(current_step, steps_per_train, steps_per_eval)
-    train_for_steps(train_iter, steps)
-    current_step += steps
-    step.assign(current_step)
-
-    train_loss = train_loss_metric.result().numpy().astype(float)
-    train_acc = train_acc_metric.result().numpy().astype(float)
-    logging.info('step: %s/%s, loss: %f',
-                 int(step), int(total_training_steps), train_loss)
-    with train_summary_writer.as_default():
-      tf.summary.scalar('loss', train_loss, step=step)
-      tf.summary.scalar('accuracy', train_acc, step=step)
-      tf.summary.scalar('learning_rate', float(learning_rate_fn(step)), step=step)
-
-    if (current_step % steps_per_eval == 0
-        or current_step >= total_training_steps):
-      eval_iter = iter(evaluation_dataset)
-      train_loss = train_loss_metric.result().numpy().astype(float)
-      train_acc = train_acc_metric.result().numpy().astype(float)
-      logging.info('train_loss: %f, train accuracy: %f', train_loss, train_acc)
-
-      eval_for_steps(eval_iter, steps_per_eval_epoch)
-
-      eval_loss = eval_loss_metric.result().numpy().astype(float)
-      eval_acc = eval_acc_metric.result().numpy().astype(float)
-      logging.info('eval loss: %f, eval accuracy: %f', eval_loss, eval_acc)
-      with test_summary_writer.as_default():
-        tf.summary.scalar('loss', eval_loss, step=step)
-        tf.summary.scalar('accuracy', eval_acc, step=step)
-      eval_loss_metric.reset_states()
-      eval_acc_metric.reset_states()
-
-      path = manager.save(checkpoint_number=step)
-      logging.info("Checkpoint saved to %s", path)
-
-  train_acc_metric.reset_states()
-  eval_acc_metric.reset_states()
-
-
-def steps_to_run(current_step, steps_per_train, steps_per_eval):
-  if steps_per_train <= 0:
-    raise ValueError('steps_per_train should be positive integer.')
-  if steps_per_train == 1:
-    return steps_per_train
-  remainder_in_eval = current_step % steps_per_eval
-  remainder_in_train = current_step % steps_per_train
-  if remainder_in_eval != 0:
-    return min(steps_per_eval - remainder_in_eval,
-               steps_per_train - remainder_in_train)
-  else:
-    return steps_per_train
+  return classifier_model
 
 
 if __name__ == '__main__':
