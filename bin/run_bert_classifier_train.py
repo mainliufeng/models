@@ -138,10 +138,9 @@ def main(_):
     checkpoint.restore(FLAGS.init_checkpoint).assert_nontrivial_match()
 
   # initialize or load classifier model
-  step = tf.Variable(1, name="step", dtype=tf.int64)
   checkpoint_path = os.path.join(FLAGS.model_dir, 'checkpoint')
   checkpoint = tf.train.Checkpoint(
-    step=step, optimizer=optimizer, model=classifier_model)
+    step=tf.Variable(1), optimizer=optimizer, model=classifier_model)
   manager = tf.train.CheckpointManager(checkpoint, FLAGS.model_dir, max_to_keep=3)
   checkpoint.restore(manager.latest_checkpoint)
   if manager.latest_checkpoint:
@@ -191,21 +190,23 @@ def main(_):
 
   steps_per_train = 10
   steps_per_eval = 1000
-  current_step = int(step)
+  current_step = int(checkpoint.step)
   while current_step < total_training_steps:
     steps = steps_to_run(current_step, steps_per_train, steps_per_eval)
     train_for_steps(train_iter, steps)
     current_step += steps
-    step.assign(current_step)
+    checkpoint.step.assign(current_step)
 
     train_loss = train_loss_metric.result().numpy().astype(float)
     train_acc = train_acc_metric.result().numpy().astype(float)
     logging.info('step: %s/%s, loss: %f',
-                 int(step), int(total_training_steps), train_loss)
+                 current_step, int(total_training_steps), train_loss)
     with train_summary_writer.as_default():
-      tf.summary.scalar('loss', train_loss, step=step)
-      tf.summary.scalar('accuracy', train_acc, step=step)
-      tf.summary.scalar('learning_rate', float(learning_rate_fn(step)), step=step)
+      tf.summary.scalar('loss', train_loss, step=current_step)
+      tf.summary.scalar('accuracy', train_acc, step=current_step)
+      tf.summary.scalar('learning_rate',
+                        float(learning_rate_fn(current_step)),
+                        step=current_step)
 
     if (current_step % steps_per_eval == 0
         or current_step >= total_training_steps):
@@ -220,12 +221,12 @@ def main(_):
       eval_acc = eval_acc_metric.result().numpy().astype(float)
       logging.info('eval loss: %f, eval accuracy: %f', eval_loss, eval_acc)
       with test_summary_writer.as_default():
-        tf.summary.scalar('loss', eval_loss, step=step)
-        tf.summary.scalar('accuracy', eval_acc, step=step)
+        tf.summary.scalar('loss', eval_loss, step=current_step)
+        tf.summary.scalar('accuracy', eval_acc, step=current_step)
       eval_loss_metric.reset_states()
       eval_acc_metric.reset_states()
 
-      path = manager.save(checkpoint_number=step)
+      path = manager.save(checkpoint_number=current_step)
       logging.info("Checkpoint saved to %s", path)
 
   train_acc_metric.reset_states()
