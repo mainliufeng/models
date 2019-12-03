@@ -21,11 +21,57 @@ from __future__ import print_function
 import collections
 import csv
 import os
+import json
 
+from absl import app
 from absl import logging
+from absl import flags
 import tensorflow as tf
 
 from data import bert_tokenization as tokenization
+
+
+FLAGS = flags.FLAGS
+
+# BERT classification specific flags.
+flags.DEFINE_string(
+    "input_data_dir", None,
+    "The input data dir. Should contain the .tsv files (or other data files) "
+    "for the task.")
+
+flags.DEFINE_enum("classification_task_name", "MNLI",
+                  ["COLA", "MNLI", "MRPC", "XNLI", "ATEC", "SIM", "LCQMC_PAIR"],
+                  "The name of the task to train BERT classifier.")
+
+# Shared flags across BERT fine-tuning tasks.
+flags.DEFINE_string("vocab_file", None,
+                    "The vocabulary file that the BERT model was trained on.")
+
+flags.DEFINE_string(
+    "train_data_output_path", None,
+    "The path in which generated training input data will be written as tf"
+    " records."
+)
+
+flags.DEFINE_string(
+    "eval_data_output_path", None,
+    "The path in which generated training input data will be written as tf"
+    " records."
+)
+
+flags.DEFINE_string("meta_data_file_path", None,
+                    "The path in which input meta data will be written.")
+
+flags.DEFINE_bool(
+    "do_lower_case", True,
+    "Whether to lower case the input text. Should be True for uncased "
+    "models and False for cased models.")
+
+flags.DEFINE_integer(
+    "max_seq_length", 128,
+    "The maximum total input sequence length after WordPiece tokenization. "
+    "Sequences longer than this will be truncated, and sequences shorter "
+    "than this will be padded.")
 
 
 class InputExample(object):
@@ -578,3 +624,44 @@ def generate_tf_record_from_data_file(processor,
     meta_data["eval_data_size"] = len(eval_input_data_examples)
 
   return meta_data
+
+
+def generate_classifier_dataset():
+  """Generates classifier dataset and returns input meta data."""
+  assert FLAGS.input_data_dir and FLAGS.classification_task_name
+
+  processors = {
+      "cola": ColaProcessor,
+      "mnli": MnliProcessor,
+      "mrpc": MrpcProcessor,
+      "xnli": XnliProcessor,
+      "atec": AtecProcessor,
+      "lcqmc_pair": LCQMCPairClassificationProcessor,
+  }
+  task_name = FLAGS.classification_task_name.lower()
+  if task_name not in processors:
+    raise ValueError("Task not found: %s" % (task_name))
+
+  processor = processors[task_name]()
+  return generate_tf_record_from_data_file(
+      processor,
+      FLAGS.input_data_dir,
+      FLAGS.vocab_file,
+      train_data_output_path=FLAGS.train_data_output_path,
+      eval_data_output_path=FLAGS.eval_data_output_path,
+      max_seq_length=FLAGS.max_seq_length,
+      do_lower_case=FLAGS.do_lower_case)
+
+
+def main(_):
+  input_meta_data = generate_classifier_dataset()
+
+  with tf.io.gfile.GFile(FLAGS.meta_data_file_path, "w") as writer:
+    writer.write(json.dumps(input_meta_data, indent=4) + "\n")
+
+
+if __name__ == "__main__":
+  flags.mark_flag_as_required("vocab_file")
+  flags.mark_flag_as_required("train_data_output_path")
+  flags.mark_flag_as_required("meta_data_file_path")
+  app.run(main)

@@ -32,7 +32,7 @@ from bert import bert_modeling as modeling
 from bert.bert_classifier import bert_classifier_model
 from optimization.optimizers import WarmUp, AdamWeightDecay
 from flags import common_bert_flags as common_flags
-from data import bert_classifier_dataset
+from data import get_bert_classifier_dataset
 from loss.losses import get_loss_fn
 
 flags.DEFINE_string('train_data_path', None,
@@ -59,44 +59,33 @@ def main(_):
   assert tf.version.VERSION.startswith('2.')
 
   gpus = tf.config.experimental.list_physical_devices('GPU')
-  assert len(gpus) > 0
-  tf.config.experimental.set_memory_growth(gpus[0], True)
+  if len(gpus) > 0:
+    tf.config.experimental.set_memory_growth(gpus[0], True)
 
-  # args
-  with tf.io.gfile.GFile(FLAGS.input_meta_data_path, 'rb') as reader:
-    input_meta_data = json.loads(reader.read().decode('utf-8'))
-  train_data_size = input_meta_data['train_data_size']
-  eval_data_size = input_meta_data['eval_data_size']
-  max_seq_length = input_meta_data['max_seq_length']
-  num_classes = input_meta_data['num_labels']
+  # dataset and config
+  (input_meta_data,
+   training_dataset,
+   evaluation_dataset) = get_bert_classifier_dataset(
+    FLAGS.input_meta_data_path,
+    FLAGS.train_data_path, FLAGS.train_batch_size,
+    FLAGS.eval_data_path, FLAGS.eval_batch_size)
 
   bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
   epochs = FLAGS.num_train_epochs
-  steps_per_epoch = int(train_data_size / FLAGS.train_batch_size)
+  steps_per_epoch = int(input_meta_data['train_data_size'] / FLAGS.train_batch_size)
   num_train_steps = steps_per_epoch * epochs
-  steps_per_eval_epoch = int(math.ceil(eval_data_size / FLAGS.eval_batch_size))
-  warmup_steps = int(epochs * train_data_size * 0.1 / FLAGS.train_batch_size)
+  steps_per_eval_epoch = int(math.ceil(input_meta_data['eval_data_size'] / FLAGS.eval_batch_size))
+  warmup_steps = int(epochs * input_meta_data['train_data_size'] * 0.1 / FLAGS.train_batch_size)
 
-  # dataset
-  training_dataset = bert_classifier_dataset.create_classifier_dataset(
-    FLAGS.train_data_path,
-    seq_length=max_seq_length,
-    batch_size=FLAGS.train_batch_size)
   train_iter = iter(training_dataset)
-  evaluation_dataset = bert_classifier_dataset.create_classifier_dataset(
-    FLAGS.eval_data_path,
-    seq_length=max_seq_length,
-    batch_size=FLAGS.eval_batch_size,
-    is_training=False,
-    drop_remainder=False)
 
   # model
   classifier_model, bert_core_model = (
     bert_classifier_model(
       bert_config,
       tf.float32,
-      num_classes,
-      max_seq_length,
+      input_meta_data['num_labels'],
+      input_meta_data['max_seq_length'],
       share_parameter_across_layers=FLAGS.share_parameter_across_layers))
 
   # lr
@@ -129,7 +118,7 @@ def main(_):
   loss_fn = get_loss_fn(
     loss=None,
     num_train_steps=num_train_steps,
-    num_classes=num_classes)
+    num_classes=input_meta_data['num_labels'])
 
   # initialize bert core model
   if FLAGS.init_checkpoint:

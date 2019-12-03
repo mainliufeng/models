@@ -30,11 +30,44 @@ from absl import logging
 import numpy as np
 import tensorflow as tf
 import jieba
+import json
+import string
 
 from data.bert_classifier_data_lib import convert_single_example
 from data import bert_tokenization as tokenization
+from data import bert_classifier_dataset_generator
 
-import string
+
+FLAGS = flags.FLAGS
+
+# BERT classification specific flags.
+flags.DEFINE_string(
+    "input_data_dir", None,
+    "The input data dir. Should contain the .tsv files (or other data files) "
+    "for the task.")
+
+flags.DEFINE_enum("classification_task_name", "MNLI",
+                  ["COLA", "MNLI", "MRPC", "XNLI", "ATEC", "SIM", "LCQMC_PAIR"],
+                  "The name of the task to train BERT classifier.")
+
+# Shared flags across BERT fine-tuning tasks.
+flags.DEFINE_string("vocab_file", None,
+                    "The vocabulary file that the BERT model was trained on.")
+
+flags.DEFINE_bool(
+    "do_lower_case", True,
+    "Whether to lower case the input text. Should be True for uncased "
+    "models and False for cased models.")
+
+flags.DEFINE_integer(
+    "max_seq_length", 128,
+    "The maximum total input sequence length after WordPiece tokenization. "
+    "Sequences longer than this will be truncated, and sequences shorter "
+    "than this will be padded.")
+
+flags.DEFINE_float("token_prob", 0.7, "Token prob")
+flags.DEFINE_integer("index", 0, "index")
+
 
 
 printable = set(string.printable)
@@ -351,3 +384,36 @@ class TfIdfWordRep(EfficientRandomGen):
     for idx in token_list_idx:
       self.token_list += [self.tf_idf_keys[idx]]
     self.token_ptr = len(self.token_list) - 1
+
+
+def main(_):
+  """Generates classifier dataset and returns input meta data."""
+  assert FLAGS.input_data_dir and FLAGS.classification_task_name
+
+  processors = {
+      "cola": bert_classifier_dataset_generator.ColaProcessor,
+      "mnli": bert_classifier_dataset_generator.MnliProcessor,
+      "mrpc": bert_classifier_dataset_generator.MrpcProcessor,
+      "xnli": bert_classifier_dataset_generator.XnliProcessor,
+      "atec": bert_classifier_dataset_generator.AtecProcessor,
+      "lcqmc_pair": bert_classifier_dataset_generator.LCQMCPairClassificationProcessor,
+  }
+  task_name = FLAGS.classification_task_name.lower()
+  if task_name not in processors:
+    raise ValueError("Task not found: %s" % (task_name))
+
+  processor = processors[task_name]()
+  return generate_tf_record_from_data_file(
+      processor,
+      FLAGS.input_data_dir,
+      FLAGS.vocab_file,
+      FLAGS.token_prob,
+      FLAGS.index,
+      max_seq_length=FLAGS.max_seq_length,
+      do_lower_case=FLAGS.do_lower_case)
+
+
+if __name__ == "__main__":
+  flags.mark_flag_as_required("vocab_file")
+  flags.mark_flag_as_required("input_data_dir")
+  app.run(main)

@@ -1,0 +1,1 @@
+from data.bert_classifier_dataset import get_classifier_dataset as get_bert_classifier_dataset

@@ -2,7 +2,7 @@ export PYTHONPATH="$PYTHONPATH:/home/liufeng/Code/github/models"
 
 export TASK_NAME=LCQMC_PAIR
 
-python /home/liufeng/Code/github/models/bin/run_uda_preprocess.py \
+python /home/liufeng/Code/github/models/data/gen_uda_dataset.py \
     --input_data_dir=$LCQMC_DIR \
     --vocab_file=${MODEL_SOURCE_DIR}/bert_chinese_L-12_H-768_A-12/vocab.txt \
     --max_seq_length=128 \

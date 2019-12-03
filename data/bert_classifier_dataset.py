@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
+
 import tensorflow as tf
 
 
-def decode_record(record, name_to_features):
+def _decode_record(record, name_to_features):
   """Decodes a record to a TensorFlow example."""
   example = tf.io.parse_single_example(record, name_to_features)
 
@@ -36,7 +38,7 @@ def decode_record(record, name_to_features):
   return example
 
 
-def file_based_input_fn_builder(input_file, name_to_features):
+def _file_based_input_fn_builder(input_file, name_to_features):
   """Creates an `input_fn` closure to be passed for BERT custom training."""
 
   def input_fn():
@@ -44,7 +46,7 @@ def file_based_input_fn_builder(input_file, name_to_features):
     # For training, we want a lot of parallel reading and shuffling.
     # For eval, we want no shuffling and parallel reading doesn't matter.
     d = tf.data.TFRecordDataset(input_file)
-    d = d.map(lambda record: decode_record(record, name_to_features))
+    d = d.map(lambda record: _decode_record(record, name_to_features))
 
     # When `input_file` is a path to a single file or a list
     # containing a single path, disable auto sharding so that
@@ -59,7 +61,7 @@ def file_based_input_fn_builder(input_file, name_to_features):
   return input_fn
 
 
-def create_classifier_dataset(file_path,
+def _create_classifier_dataset(file_path,
                               seq_length,
                               batch_size,
                               is_training=True,
@@ -72,7 +74,7 @@ def create_classifier_dataset(file_path,
       'label_ids': tf.io.FixedLenFeature([], tf.int64),
       'is_real_example': tf.io.FixedLenFeature([], tf.int64),
   }
-  input_fn = file_based_input_fn_builder(file_path, name_to_features)
+  input_fn = _file_based_input_fn_builder(file_path, name_to_features)
   dataset = input_fn()
 
   def _select_data_from_record(record):
@@ -93,3 +95,27 @@ def create_classifier_dataset(file_path,
   dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
   dataset = dataset.prefetch(1024)
   return dataset
+
+
+def get_classifier_dataset(input_meta_data_path,
+                           train_data_path, train_batch_size,
+                           eval_data_path, eval_batch_size):
+  with tf.io.gfile.GFile(input_meta_data_path, 'rb') as reader:
+    input_meta_data = json.loads(reader.read().decode('utf-8'))
+  train_data_size = input_meta_data['train_data_size']
+  eval_data_size = input_meta_data['eval_data_size']
+  max_seq_length = input_meta_data['max_seq_length']
+  num_classes = input_meta_data['num_labels']
+
+  training_dataset = _create_classifier_dataset(
+    train_data_path,
+    seq_length=max_seq_length,
+    batch_size=train_batch_size)
+  evaluation_dataset = _create_classifier_dataset(
+    eval_data_path,
+    seq_length=max_seq_length,
+    batch_size=eval_batch_size,
+    is_training=False,
+    drop_remainder=False)
+  return input_meta_data, training_dataset, evaluation_dataset
+
