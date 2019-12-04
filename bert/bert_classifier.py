@@ -28,8 +28,7 @@ def bert_classifier_model(bert_config,
                           num_labels,
                           max_seq_length,
                           final_layer_initializer=None,
-                          share_parameter_across_layers=False,
-                          hub_module_url=None):
+                          share_parameter_across_layers=False):
   """BERT classifier model in functional API style.
 
   Construct a Keras model for predicting `num_labels` outputs from an input with
@@ -41,7 +40,7 @@ def bert_classifier_model(bert_config,
     num_labels: integer, the number of classes.
     max_seq_length: integer, the maximum input sequence length.
     final_layer_initializer: Initializer for final dense layer. Defaulted
-      TruncatedNormal initializer.
+      GlorotUniform initializer.
     hub_module_url: TF-Hub path/url to Bert module.
 
   Returns:
@@ -54,24 +53,19 @@ def bert_classifier_model(bert_config,
       shape=(max_seq_length,), dtype=tf.int32, name='input_mask')
   input_type_ids = tf.keras.layers.Input(
       shape=(max_seq_length,), dtype=tf.int32, name='input_type_ids')
-  if hub_module_url:
-    bert_model = hub.KerasLayer(hub_module_url, trainable=True)
-    pooled_output, _ = bert_model([input_word_ids, input_mask, input_type_ids])
-  else:
-    bert_model = modeling.get_bert_model(
-        input_word_ids,
-        input_mask,
-        input_type_ids,
-        config=bert_config,
-        float_type=float_type,
-        share_parameter_across_layers=share_parameter_across_layers)
-    pooled_output = bert_model.outputs[0]
+  bert_model = modeling.get_bert_model(
+      input_word_ids,
+      input_mask,
+      input_type_ids,
+      config=bert_config,
+      float_type=float_type,
+      share_parameter_across_layers=share_parameter_across_layers)
+  pooled_output = bert_model.outputs[0]
 
   if final_layer_initializer is not None:
     initializer = final_layer_initializer
   else:
-    initializer = tf.keras.initializers.TruncatedNormal(
-        stddev=bert_config.initializer_range)
+    initializer = tf.keras.initializers.GlorotUniform()
 
   output = tf.keras.layers.Dropout(rate=bert_config.hidden_dropout_prob)(
       pooled_output)
