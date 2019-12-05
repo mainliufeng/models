@@ -29,7 +29,7 @@ from absl import flags
 import tensorflow as tf  # TF 1.x
 
 import bert.bert_config
-from bert import bert_modeling as modeling
+from bert import bert_model as modeling
 
 FLAGS = flags.FLAGS
 

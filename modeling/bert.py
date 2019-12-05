@@ -1,49 +1,47 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""The main BERT model and related functions."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
+
 import tensorflow as tf
 
 from bert.bert_config import BertConfig
-from modeling.embedding import EmbeddingLookup, EmbeddingLookupFactorized, EmbeddingPostprocessor
+from modeling.embedding import EmbeddingLookupFactorized, EmbeddingLookup, EmbeddingPostprocessor
 from modeling.transformer import Transformer
+
 from utils import tf_utils
 
 
-def get_bert_model(input_word_ids,
-                   input_mask,
-                   input_type_ids,
-                   config=None,
-                   name=None,
-                   float_type=tf.float32,
-                   share_parameter_across_layers=False):
-  """Wraps the core BERT model as a keras.Model."""
-  bert_model_layer = BertModel(
-    config=config, float_type=float_type,
-    share_parameter_across_layers=share_parameter_across_layers, name=name)
-  pooled_output, sequence_output = bert_model_layer(input_word_ids, input_mask,
-                                                    input_type_ids)
-  bert_model = tf.keras.Model(
-      inputs=[input_word_ids, input_mask, input_type_ids],
-      outputs=[pooled_output, sequence_output])
-  return bert_model
+def create_attention_mask_from_input_mask(from_tensor, to_mask):
+  """Create 3D attention mask from a 2D tensor mask.
+
+  Args:
+    from_tensor: 2D or 3D Tensor of shape [batch_size, from_seq_length, ...].
+    to_mask: int32 Tensor of shape [batch_size, to_seq_length].
+
+  Returns:
+    float Tensor of shape [batch_size, from_seq_length, to_seq_length].
+  """
+  from_shape = tf_utils.get_shape_list(from_tensor, expected_rank=[2, 3])
+  batch_size = from_shape[0]
+  from_seq_length = from_shape[1]
+
+  to_shape = tf_utils.get_shape_list(to_mask, expected_rank=2)
+  to_seq_length = to_shape[1]
+
+  to_mask = tf.cast(
+      tf.reshape(to_mask, [batch_size, 1, to_seq_length]),
+      dtype=from_tensor.dtype)
+
+  # We don't assume that `from_tensor` is a mask (although it could be). We
+  # don't actually care if we attend *from* padding tokens (only *to* padding)
+  # tokens so we create a tensor of all ones.
+  #
+  # `broadcast_ones` = [batch_size, from_seq_length, 1]
+  broadcast_ones = tf.ones(
+      shape=[batch_size, from_seq_length, 1], dtype=from_tensor.dtype)
+
+  # Here we broadcast along two dimensions to create the mask.
+  mask = broadcast_ones * to_mask
+
+  return mask
 
 
 class BertModel(tf.keras.layers.Layer):
@@ -167,38 +165,3 @@ class BertModel(tf.keras.layers.Layer):
     config = {"config": self.config.to_dict()}
     base_config = super(BertModel, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
-
-
-def create_attention_mask_from_input_mask(from_tensor, to_mask):
-  """Create 3D attention mask from a 2D tensor mask.
-
-  Args:
-    from_tensor: 2D or 3D Tensor of shape [batch_size, from_seq_length, ...].
-    to_mask: int32 Tensor of shape [batch_size, to_seq_length].
-
-  Returns:
-    float Tensor of shape [batch_size, from_seq_length, to_seq_length].
-  """
-  from_shape = tf_utils.get_shape_list(from_tensor, expected_rank=[2, 3])
-  batch_size = from_shape[0]
-  from_seq_length = from_shape[1]
-
-  to_shape = tf_utils.get_shape_list(to_mask, expected_rank=2)
-  to_seq_length = to_shape[1]
-
-  to_mask = tf.cast(
-      tf.reshape(to_mask, [batch_size, 1, to_seq_length]),
-      dtype=from_tensor.dtype)
-
-  # We don't assume that `from_tensor` is a mask (although it could be). We
-  # don't actually care if we attend *from* padding tokens (only *to* padding)
-  # tokens so we create a tensor of all ones.
-  #
-  # `broadcast_ones` = [batch_size, from_seq_length, 1]
-  broadcast_ones = tf.ones(
-      shape=[batch_size, from_seq_length, 1], dtype=from_tensor.dtype)
-
-  # Here we broadcast along two dimensions to create the mask.
-  mask = broadcast_ones * to_mask
-
-  return mask

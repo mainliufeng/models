@@ -23,9 +23,8 @@ import tensorflow as tf
 from bert import bert_model as modeling
 
 
-def bert_classifier_model(bert_config,
+def bert_regression_model(bert_config,
                           float_type,
-                          num_labels,
                           max_seq_length,
                           final_layer_initializer=None,
                           share_parameter_across_layers=False):
@@ -37,11 +36,9 @@ def bert_classifier_model(bert_config,
   Args:
     bert_config: BertConfig, the config defines the core BERT model.
     float_type: dtype, tf.float32 or tf.bfloat16.
-    num_labels: integer, the number of classes.
     max_seq_length: integer, the maximum input sequence length.
     final_layer_initializer: Initializer for final dense layer. Defaulted
       GlorotUniform initializer.
-    hub_module_url: TF-Hub path/url to Bert module.
 
   Returns:
     Combined prediction model (words, mask, type) -> (one-hot labels)
@@ -70,11 +67,12 @@ def bert_classifier_model(bert_config,
   output = tf.keras.layers.Dropout(rate=bert_config.hidden_dropout_prob)(
       pooled_output)
   output = tf.keras.layers.Dense(
-      num_labels,
+      1,
       kernel_initializer=initializer,
       name='output',
       dtype=float_type)(
           output)
+  output = tf.nn.sigmoid(output)
   return tf.keras.Model(
       inputs={
           'input_word_ids': input_word_ids,

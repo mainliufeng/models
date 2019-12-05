@@ -29,7 +29,7 @@ from absl import logging
 import tensorflow as tf
 
 import bert.bert_config
-from bert import bert_modeling as modeling
+from bert import bert_model as modeling
 from bert.bert_classifier import bert_classifier_model
 from optimization.adamw import AdamWeightDecay
 from optimization.warmup import WarmUp

@@ -30,7 +30,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 
 import bert.bert_config
-from bert import bert_modeling as modeling
+from bert import bert_model as modeling
 from bert.bert_classifier import bert_classifier_model
 from flags import common_bert_flags as common_flags
 from utils import bert_model_saving_utils as model_saving_utils

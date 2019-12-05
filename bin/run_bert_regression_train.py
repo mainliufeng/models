@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-import json
 import math
 import os
 
@@ -29,12 +27,11 @@ from absl import logging
 import tensorflow as tf
 
 import bert.bert_config
-from bert import bert_model as modeling
-from bert.bert_classifier import bert_classifier_model
+from bert.bert_regression import bert_regression_model
 from optimization.adamw import AdamWeightDecay
 from optimization.warmup import WarmUp
 from flags import common_bert_flags as common_flags
-from dataset.bert_classifier_dataset import get_classifier_dataset as get_bert_classifier_dataset
+from dataset.bert_regression_dataset import get_regression_dataset as get_bert_regression_dataset
 from loss.losses import get_loss_fn
 
 flags.DEFINE_string('train_data_path', None,
@@ -67,7 +64,7 @@ def main(_):
   # dataset and config
   (input_meta_data,
    training_dataset,
-   evaluation_dataset) = get_bert_classifier_dataset(
+   evaluation_dataset) = get_bert_regression_dataset(
     FLAGS.input_meta_data_path,
     FLAGS.train_data_path, FLAGS.train_batch_size,
     FLAGS.eval_data_path, FLAGS.eval_batch_size)
@@ -83,10 +80,9 @@ def main(_):
 
   # model
   classifier_model, bert_core_model = (
-    bert_classifier_model(
+    bert_regression_model(
       bert_config,
       tf.float32,
-      input_meta_data['num_labels'],
       input_meta_data['max_seq_length'],
       share_parameter_across_layers=FLAGS.share_parameter_across_layers))
 
@@ -117,10 +113,7 @@ def main(_):
       optimizer)
 
   # loss
-  loss_fn = get_loss_fn(
-    loss=None,
-    num_train_steps=num_train_steps,
-    num_classes=input_meta_data['num_labels'])
+  loss_fn = get_loss_fn(loss='mse')
 
   # initialize bert core model
   if FLAGS.init_checkpoint:
@@ -144,8 +137,6 @@ def main(_):
   test_summary_writer = tf.summary.create_file_writer(summary_dir + '/test')
 
   # metrics
-  train_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
-  eval_acc_metric = tf.keras.metrics.SparseCategoricalAccuracy()
   train_loss_metric = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
   eval_loss_metric = tf.keras.metrics.Mean('eval_loss', dtype=tf.float32)
 
@@ -162,7 +153,6 @@ def main(_):
     grads = tape.gradient(loss, classifier_model.trainable_weights)
     optimizer.apply_gradients(zip(grads, classifier_model.trainable_weights))
     train_loss_metric.update_state(loss)
-    train_acc_metric.update_state(y_batch_train, logits)
 
   @tf.function
   def eval_for_steps(eval_iter, steps):
@@ -174,7 +164,6 @@ def main(_):
     val_logits = classifier_model(x_batch_val)
     loss = loss_fn(y_batch_val, val_logits)
     eval_loss_metric.update_state(loss)
-    eval_acc_metric.update_state(y_batch_val, val_logits)
 
   total_training_steps = steps_per_epoch * epochs
 
@@ -188,12 +177,10 @@ def main(_):
     checkpoint.step.assign(current_step)
 
     train_loss = train_loss_metric.result().numpy().astype(float)
-    train_acc = train_acc_metric.result().numpy().astype(float)
     logging.info('step: %s/%s, loss: %f',
                  current_step, int(total_training_steps), train_loss)
     with train_summary_writer.as_default():
       tf.summary.scalar('loss', train_loss, step=current_step)
-      tf.summary.scalar('accuracy', train_acc, step=current_step)
       tf.summary.scalar('learning_rate',
                         float(learning_rate_fn(current_step)),
                         step=current_step)
@@ -202,25 +189,18 @@ def main(_):
         or current_step >= total_training_steps):
       eval_iter = iter(evaluation_dataset)
       train_loss = train_loss_metric.result().numpy().astype(float)
-      train_acc = train_acc_metric.result().numpy().astype(float)
-      logging.info('train_loss: %f, train accuracy: %f', train_loss, train_acc)
+      logging.info('train_loss: %f', train_loss)
 
       eval_for_steps(eval_iter, steps_per_eval_epoch)
 
       eval_loss = eval_loss_metric.result().numpy().astype(float)
-      eval_acc = eval_acc_metric.result().numpy().astype(float)
-      logging.info('eval loss: %f, eval accuracy: %f', eval_loss, eval_acc)
+      logging.info('eval loss: %f', eval_loss)
       with test_summary_writer.as_default():
         tf.summary.scalar('loss', eval_loss, step=current_step)
-        tf.summary.scalar('accuracy', eval_acc, step=current_step)
       eval_loss_metric.reset_states()
-      eval_acc_metric.reset_states()
 
       path = manager.save(checkpoint_number=current_step)
       logging.info("Checkpoint saved to %s", path)
-
-  train_acc_metric.reset_states()
-  eval_acc_metric.reset_states()
 
 
 def steps_to_run(current_step, steps_per_train, steps_per_eval):
