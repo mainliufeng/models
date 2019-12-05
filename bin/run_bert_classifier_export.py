@@ -29,6 +29,7 @@ from absl import logging
 import tensorflow as tf
 import tensorflow_addons as tfa
 
+import bert.bert_config
 from bert import bert_modeling as modeling
 from bert.bert_classifier import bert_classifier_model
 from flags import common_bert_flags as common_flags
@@ -51,7 +52,7 @@ def main(_):
   with tf.io.gfile.GFile(FLAGS.input_meta_data_path, 'rb') as reader:
     input_meta_data = json.loads(reader.read().decode('utf-8'))
 
-  bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
+  bert_config = bert.bert_config.BertConfig.from_json_file(FLAGS.bert_config_file)
 
   classifier_model = bert_classifier_model(
       bert_config, tf.float32, input_meta_data['num_labels'],

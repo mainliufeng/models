@@ -28,11 +28,13 @@ from absl import flags
 from absl import logging
 import tensorflow as tf
 
+import bert.bert_config
 from bert import bert_modeling as modeling
 from bert.bert_classifier import bert_classifier_model
-from optimization.optimizers import WarmUp, AdamWeightDecay
+from optimization.adamw import AdamWeightDecay
+from optimization.warmup import WarmUp
 from flags import common_bert_flags as common_flags
-from data import get_bert_classifier_dataset
+from dataset.bert_classifier_dataset import get_classifier_dataset as get_bert_classifier_dataset
 from loss.losses import get_loss_fn
 
 flags.DEFINE_string('train_data_path', None,
@@ -70,7 +72,7 @@ def main(_):
     FLAGS.train_data_path, FLAGS.train_batch_size,
     FLAGS.eval_data_path, FLAGS.eval_batch_size)
 
-  bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
+  bert_config = bert.bert_config.BertConfig.from_json_file(FLAGS.bert_config_file)
   epochs = FLAGS.num_train_epochs
   steps_per_epoch = int(input_meta_data['train_data_size'] / FLAGS.train_batch_size)
   num_train_steps = steps_per_epoch * epochs

@@ -27,6 +27,8 @@ from absl import app
 from absl import flags
 
 import tensorflow as tf  # TF 1.x
+
+import bert.bert_config
 from bert import bert_modeling as modeling
 
 FLAGS = flags.FLAGS
@@ -76,7 +78,7 @@ def create_bert_model(bert_config):
 
 def convert_checkpoint():
   """Converts a name-based matched TF V1 checkpoint to TF V2 checkpoint."""
-  bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
+  bert_config = bert.bert_config.BertConfig.from_json_file(FLAGS.bert_config_file)
   core_model = create_bert_model(bert_config)
 
   # Uses streaming-restore in eager model to read V1 name-based checkpoints.
