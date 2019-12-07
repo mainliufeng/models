@@ -2,7 +2,7 @@ export PYTHONPATH="$PYTHONPATH:/home/liufeng/Code/github/models"
 
 export TASK=LCQMC_PAIR
 
-python /home/liufeng/Code/github/models/bin/run_bert_regression_train.py \
+python /home/liufeng/Code/github/models/bin/train_regression.py \
   --input_meta_data_path=$DATASET_DIR/scorer_simi/meta_data \
   --train_data_path=$DATASET_DIR/scorer_simi/train.tf_record \
   --eval_data_path=$DATASET_DIR/scorer_simi/eval.tf_record \

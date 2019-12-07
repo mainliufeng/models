@@ -2,7 +2,7 @@ export PYTHONPATH="$PYTHONPATH:/home/liufeng/Code/github/models"
 
 export TASK=LCQMC_PAIR
 
-python /home/liufeng/Code/github/models/bin/run_bert_classifier_train.py \
+python /home/liufeng/Code/github/models/bin/train_classifier.py \
   --input_meta_data_path=$LCQMC_DIR/${TASK}_meta_data \
   --train_data_path=$LCQMC_DIR/${TASK}_train.tf_record \
   --eval_data_path=$LCQMC_DIR/${TASK}_eval.tf_record \
