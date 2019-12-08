@@ -24,7 +24,6 @@ from absl import app
 from absl import flags
 from absl import logging
 import tensorflow as tf
-import numpy as np
 
 import bert.bert_config
 from bert.bert_regression import bert_regression_model
@@ -49,6 +48,7 @@ def main(_):
   # dataset and config
   regression_dataset = BertRegressionDataset(FLAGS.input_data_dir)
   train_dataset = regression_dataset.get_dataset('train', FLAGS.batch_size, is_training=False)
+  train_dev_dataset = regression_dataset.get_dataset('train_dev', FLAGS.batch_size, is_training=False)
   dev_dataset = regression_dataset.get_dataset('dev', FLAGS.batch_size, is_training=False)
   test_dataset = regression_dataset.get_dataset('test', FLAGS.batch_size, is_training=False)
 
@@ -78,18 +78,17 @@ def main(_):
 
   logging.info('predict start')
   train_result = model.evaluate(train_dataset)
+  train_dev_result = model.evaluate(train_dev_dataset)
   dev_result = model.evaluate(dev_dataset)
   test_result = model.evaluate(test_dataset)
   logging.info('train result: %s.', train_result)
+  logging.info('train_dev result: %s.', train_dev_result)
   logging.info('dev result: %s.', dev_result)
   logging.info('test result: %s.', test_result)
 
-  #test_dataset = regression_dataset.get_dataset('test', FLAGS.batch_size, is_training=False)
-  #result = model.predict(test_dataset)
-  #np.savetxt("test_results.csv", result, delimiter=",")
-
   with open(os.path.join(FLAGS.model_dir, 'result.txt'), 'w') as result_file:
     result_file.write('train result: {}\n'.format(train_result))
+    result_file.write('train_dev result: {}\n'.format(train_dev_result))
     result_file.write('dev result: {}\n'.format(dev_result))
     result_file.write('test result: {}\n'.format(test_result))
 

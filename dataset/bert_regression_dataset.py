@@ -49,14 +49,19 @@ class BertRegressionDataset(object):
       is_training=is_training,
       drop_remainder=is_training)
 
-  def gen_tf_records(self, processor, vocab_file, max_seq_length, do_lower_case=True):
+  def gen_tf_records(self, processor, vocab_file, max_seq_length,
+                     do_lower_case=True, set_types=None):
     tokenizer = bert_tokenization.FullTokenizer(
       vocab_file=vocab_file, do_lower_case=do_lower_case)
 
     meta_data = {
       "max_seq_length": max_seq_length,
     }
-    for set_type in processor.get_set_types():
+
+    if set_types is None:
+      set_types = processor.get_set_types()
+
+    for set_type in set_types:
       tf_record_path = self._get_tf_record_path(set_type)
       input_data_examples = processor.get_examples(self.data_dir, set_type)
       file_based_convert_examples_to_features(input_data_examples,
