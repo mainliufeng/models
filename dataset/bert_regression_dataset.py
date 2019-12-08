@@ -38,14 +38,16 @@ class BertRegressionDataset(object):
         self.meta_data = json.loads(reader.read().decode('utf-8'))
     return self.meta_data
 
-  def get_dataset(self, set_type, batch_size):
+  def get_dataset(self, set_type, batch_size, is_training=None):
     self.metadata = self.get_meta_data()
+    if is_training is None:
+      is_training = set_type == 'train'
     return create_regression_dataset(
       self._get_tf_record_path(set_type),
       seq_length=self.metadata['max_seq_length'],
       batch_size=batch_size,
-      is_training=set_type == 'train',
-      drop_remainder=set_type == 'train')
+      is_training=is_training,
+      drop_remainder=is_training)
 
   def gen_tf_records(self, processor, vocab_file, max_seq_length, do_lower_case=True):
     tokenizer = bert_tokenization.FullTokenizer(

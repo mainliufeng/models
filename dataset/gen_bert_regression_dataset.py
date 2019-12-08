@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from absl import flags, app
 
-from data.bert_regression_data_lib import file_based_convert_examples_to_features, StsProcessor
+from data.bert_regression_data_lib import StsProcessor
 from dataset.bert_regression_dataset import BertRegressionDataset
 
 FLAGS = flags.FLAGS

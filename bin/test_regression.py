@@ -28,6 +28,7 @@ import bert.bert_config
 from bert.bert_regression import bert_regression_model
 from flags import common_bert_flags, test_bert_flags
 from dataset.bert_regression_dataset import BertRegressionDataset
+from loss.losses import get_loss_fn
 
 common_bert_flags.define_common_bert_flags()
 test_bert_flags.define_test_bert_flags()
@@ -44,30 +45,46 @@ def main(_):
     tf.config.experimental.set_memory_growth(gpus[0], True)
 
   # dataset and config
-  dataset = BertRegressionDataset(FLAGS.input_data_dir).get_dataset('dev', FLAGS.batch_size)
+  regression_dataset = BertRegressionDataset(FLAGS.input_data_dir)
+  train_dataset = regression_dataset.get_dataset('train', FLAGS.batch_size, is_training=False)
+  dev_dataset = regression_dataset.get_dataset('dev', FLAGS.batch_size, is_training=False)
+  test_dataset = regression_dataset.get_dataset('test', FLAGS.batch_size, is_training=False)
 
   bert_config = bert.bert_config.BertConfig.from_json_file(FLAGS.bert_config_file)
 
   # model
-  classifier_model, bert_core_model = (
+  model, bert_core_model = (
     bert_regression_model(
       bert_config,
       tf.float32,
       FLAGS.seq_length,
       share_parameter_across_layers=FLAGS.share_parameter_across_layers))
 
+  # loss
+  loss_fn = get_loss_fn(loss='mse')
+
+  model.compile(loss=loss_fn)
+
   # initialize or load classifier model
-  checkpoint = tf.train.Checkpoint(step=tf.Variable(1), model=classifier_model)
+  checkpoint = tf.train.Checkpoint(step=tf.Variable(1), model=model)
   manager = tf.train.CheckpointManager(checkpoint, FLAGS.model_dir, max_to_keep=3)
-  checkpoint.restore(manager.latest_checkpoint)
+  checkpoint.restore(manager.latest_checkpoint).expect_partial()
   if manager.latest_checkpoint:
     logging.info('Checkpoint restored from %s.', manager.latest_checkpoint)
   else:
     exit(1)
 
   logging.info('predict start')
-  predicts = classifier_model.predict(dataset)
-  np.savetxt("test_results.csv", predicts, delimiter=",")
+  train_result = model.evaluate(train_dataset)
+  dev_result = model.evaluate(dev_dataset)
+  test_result = model.evaluate(test_dataset)
+  logging.info('train result: %s.', train_result)
+  logging.info('dev result: %s.', dev_result)
+  logging.info('test result: %s.', test_result)
+
+  test_dataset = regression_dataset.get_dataset('test', FLAGS.batch_size, is_training=False)
+  result = model.predict(test_dataset)
+  np.savetxt("test_results.csv", result, delimiter=",")
 
 
 if __name__ == '__main__':
