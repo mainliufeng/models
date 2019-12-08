@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import os
 import math
 import collections
@@ -33,9 +32,8 @@ import jieba
 import json
 import string
 
-from data.bert_classifier_data_lib import convert_single_example
+from data.bert_classifier_data_lib import convert_single_example, LCQMCPairClassificationProcessor
 from data import bert_tokenization as tokenization
-from data import bert_classifier_dataset_generator
 
 
 FLAGS = flags.FLAGS
@@ -90,7 +88,7 @@ def generate_tf_record_from_data_file(processor,
 
 
   assert data_dir
-  train_input_data_examples = processor.get_train_examples(data_dir)
+  train_input_data_examples = processor.get_examples(data_dir, 'train')
 
   data_stats_dir = os.path.join(data_dir, "data_stats")
   unsup_out_dir = os.path.join(
@@ -391,12 +389,7 @@ def main(_):
   assert FLAGS.input_data_dir and FLAGS.classification_task_name
 
   processors = {
-      "cola": bert_classifier_dataset_generator.ColaProcessor,
-      "mnli": bert_classifier_dataset_generator.MnliProcessor,
-      "mrpc": bert_classifier_dataset_generator.MrpcProcessor,
-      "xnli": bert_classifier_dataset_generator.XnliProcessor,
-      "atec": bert_classifier_dataset_generator.AtecProcessor,
-      "lcqmc_pair": bert_classifier_dataset_generator.LCQMCPairClassificationProcessor,
+      "lcqmc_pair": LCQMCPairClassificationProcessor,
   }
   task_name = FLAGS.classification_task_name.lower()
   if task_name not in processors:

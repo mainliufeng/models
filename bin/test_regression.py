@@ -18,67 +18,57 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 from absl import app
 from absl import flags
+from absl import logging
 import tensorflow as tf
+import numpy as np
 
 import bert.bert_config
 from bert.bert_regression import bert_regression_model
-from optimization.optimizers import adamw_polynomial_decay_warmup
+from flags import common_bert_flags, test_bert_flags
 from dataset.bert_regression_dataset import BertRegressionDataset
-from loss.losses import get_loss_fn
-from flags import common_bert_flags, train_bert_flags
-from utils import settings
-from training.train_loops import run_custom_train_loop
-
 
 common_bert_flags.define_common_bert_flags()
-train_bert_flags.define_train_bert_flags()
+test_bert_flags.define_test_bert_flags()
 
 FLAGS = flags.FLAGS
 
 
 def main(_):
-  settings.common_settings()
+  # Users should always run this script under TF 2.x
+  assert tf.version.VERSION.startswith('2.')
+
+  gpus = tf.config.experimental.list_physical_devices('GPU')
+  if len(gpus) > 0:
+    tf.config.experimental.set_memory_growth(gpus[0], True)
 
   # dataset and config
-  dataset = BertRegressionDataset(FLAGS.input_data_dir)
-  input_meta_data = dataset.get_meta_data()
-  training_dataset = dataset.get_dataset('train', FLAGS.train_batch_size)
-  evaluation_dataset = dataset.get_dataset('dev', FLAGS.eval_batch_size)
+  dataset = BertRegressionDataset(FLAGS.input_data_dir).get_dataset('dev', FLAGS.batch_size)
 
   bert_config = bert.bert_config.BertConfig.from_json_file(FLAGS.bert_config_file)
-  epochs = FLAGS.num_train_epochs
-  steps_per_epoch = int(input_meta_data['train_data_size'] / FLAGS.train_batch_size)
-  num_train_steps = steps_per_epoch * epochs
-  steps_per_eval_epoch = int(math.ceil(input_meta_data['eval_data_size'] / FLAGS.eval_batch_size))
-  warmup_steps = int(epochs * input_meta_data['train_data_size'] * 0.1 / FLAGS.train_batch_size)
 
   # model
-  model, bert_model = (
+  classifier_model, bert_core_model = (
     bert_regression_model(
       bert_config,
       tf.float32,
-      input_meta_data['max_seq_length'],
+      FLAGS.seq_length,
       share_parameter_across_layers=FLAGS.share_parameter_across_layers))
 
-  # optimizer
-  optimizer = adamw_polynomial_decay_warmup(
-    num_train_steps, warmup_steps,
-    learning_rate=FLAGS.learning_rate,
-    fp16=FLAGS.fp16)
+  # initialize or load classifier model
+  checkpoint = tf.train.Checkpoint(step=tf.Variable(1), model=classifier_model)
+  manager = tf.train.CheckpointManager(checkpoint, FLAGS.model_dir, max_to_keep=3)
+  checkpoint.restore(manager.latest_checkpoint)
+  if manager.latest_checkpoint:
+    logging.info('Checkpoint restored from %s.', manager.latest_checkpoint)
+  else:
+    exit(1)
 
-  # loss
-  loss_fn = get_loss_fn(loss='mse')
+  logging.info('predict start')
+  predicts = classifier_model.predict(dataset)
+  np.savetxt("test_results.csv", predicts, delimiter=",")
 
-  # run
-  run_custom_train_loop(bert_model, model, optimizer, loss_fn,
-                        training_dataset, evaluation_dataset,
-                        epochs, steps_per_epoch, steps_per_eval_epoch,
-                        FLAGS.init_checkpoint, FLAGS.model_dir,
-                        metrics_fn=None)
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('bert_config_file')

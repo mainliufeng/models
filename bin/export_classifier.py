@@ -18,19 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import json
-import math
-import os
 
 from absl import app
 from absl import flags
-from absl import logging
 import tensorflow as tf
-import tensorflow_addons as tfa
 
 import bert.bert_config
-from bert import bert_model as modeling
 from bert.bert_classifier import bert_classifier_model
 from flags import common_bert_flags as common_flags
 from utils import bert_model_saving_utils as model_saving_utils

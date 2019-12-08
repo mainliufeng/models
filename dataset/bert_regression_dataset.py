@@ -18,9 +18,96 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import json
 
 import tensorflow as tf
+
+from data import bert_tokenization
+from data.bert_regression_data_lib import file_based_convert_examples_to_features, StsProcessor
+
+
+class BertRegressionDataset(object):
+  def __init__(self, data_dir):
+    self.data_dir = data_dir
+    self.metadata = None
+
+  def get_meta_data(self):
+    if not self.metadata:
+      with tf.io.gfile.GFile(self._get_metadata_path(), 'rb') as reader:
+        self.meta_data = json.loads(reader.read().decode('utf-8'))
+    return self.meta_data
+
+  def get_dataset(self, set_type, batch_size):
+    self.metadata = self.get_meta_data()
+    return create_regression_dataset(
+      self._get_tf_record_path(set_type),
+      seq_length=self.metadata['max_seq_length'],
+      batch_size=batch_size,
+      is_training=set_type == 'train',
+      drop_remainder=set_type == 'train')
+
+  def gen_tf_records(self, processor, vocab_file, max_seq_length, do_lower_case=True):
+    tokenizer = bert_tokenization.FullTokenizer(
+      vocab_file=vocab_file, do_lower_case=do_lower_case)
+
+    meta_data = {
+      "max_seq_length": max_seq_length,
+    }
+    for set_type in processor.get_set_types():
+      tf_record_path = self._get_tf_record_path(set_type)
+      input_data_examples = processor.get_examples(self.data_dir, set_type)
+      file_based_convert_examples_to_features(input_data_examples,
+                                              max_seq_length, tokenizer,
+                                              tf_record_path)
+      meta_data['{}_data_size'.format(set_type)] = len(input_data_examples)
+      if set_type == 'dev':
+        meta_data['eval_data_size'.format(set_type)] = len(input_data_examples)
+
+    with tf.io.gfile.GFile(self._get_metadata_path(), "w") as writer:
+      writer.write(json.dumps(meta_data, indent=4) + "\n")
+
+  def _get_tf_record_path(self, set_type):
+    return os.path.join(self.data_dir, '{}.tf_record'.format(set_type))
+
+  def _get_metadata_path(self):
+    return os.path.join(self.data_dir, 'meta_data')
+
+
+def create_regression_dataset(file_path,
+                              seq_length,
+                              batch_size,
+                              is_training=True,
+                              drop_remainder=True):
+  """Creates input dataset from (tf)records files for train/eval."""
+  name_to_features = {
+      'input_ids': tf.io.FixedLenFeature([seq_length], tf.int64),
+      'input_mask': tf.io.FixedLenFeature([seq_length], tf.int64),
+      'segment_ids': tf.io.FixedLenFeature([seq_length], tf.int64),
+      'vals': tf.io.FixedLenFeature([], tf.float32),
+      'is_real_example': tf.io.FixedLenFeature([], tf.int64),
+  }
+  input_fn = _file_based_input_fn_builder(file_path, name_to_features)
+  dataset = input_fn()
+
+  def _select_data_from_record(record):
+    x = {
+        'input_word_ids': record['input_ids'],
+        'input_mask': record['input_mask'],
+        'input_type_ids': record['segment_ids']
+    }
+    y = record['vals']
+    return (x, y)
+
+  dataset = dataset.map(_select_data_from_record)
+
+  if is_training:
+    dataset = dataset.shuffle(100)
+    dataset = dataset.repeat()
+
+  dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+  dataset = dataset.prefetch(1024)
+  return dataset
 
 
 def _decode_record(record, name_to_features):
@@ -59,62 +146,3 @@ def _file_based_input_fn_builder(input_file, name_to_features):
     return d
 
   return input_fn
-
-
-def _create_regression_dataset(file_path,
-                               seq_length,
-                               batch_size,
-                               is_training=True,
-                               drop_remainder=True):
-  """Creates input dataset from (tf)records files for train/eval."""
-  name_to_features = {
-      'input_ids': tf.io.FixedLenFeature([seq_length], tf.int64),
-      'input_mask': tf.io.FixedLenFeature([seq_length], tf.int64),
-      'segment_ids': tf.io.FixedLenFeature([seq_length], tf.int64),
-      'vals': tf.io.FixedLenFeature([], tf.float32),
-      'is_real_example': tf.io.FixedLenFeature([], tf.int64),
-  }
-  input_fn = _file_based_input_fn_builder(file_path, name_to_features)
-  dataset = input_fn()
-
-  def _select_data_from_record(record):
-    x = {
-        'input_word_ids': record['input_ids'],
-        'input_mask': record['input_mask'],
-        'input_type_ids': record['segment_ids']
-    }
-    y = record['vals']
-    return (x, y)
-
-  dataset = dataset.map(_select_data_from_record)
-
-  if is_training:
-    dataset = dataset.shuffle(100)
-    dataset = dataset.repeat()
-
-  dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
-  dataset = dataset.prefetch(1024)
-  return dataset
-
-
-def get_regression_dataset(input_meta_data_path,
-                           train_data_path, train_batch_size,
-                           eval_data_path, eval_batch_size):
-  with tf.io.gfile.GFile(input_meta_data_path, 'rb') as reader:
-    input_meta_data = json.loads(reader.read().decode('utf-8'))
-  train_data_size = input_meta_data['train_data_size']
-  eval_data_size = input_meta_data['eval_data_size']
-  max_seq_length = input_meta_data['max_seq_length']
-
-  training_dataset = _create_regression_dataset(
-    train_data_path,
-    seq_length=max_seq_length,
-    batch_size=train_batch_size)
-  evaluation_dataset = _create_regression_dataset(
-    eval_data_path,
-    seq_length=max_seq_length,
-    batch_size=eval_batch_size,
-    is_training=False,
-    drop_remainder=False)
-  return input_meta_data, training_dataset, evaluation_dataset
-

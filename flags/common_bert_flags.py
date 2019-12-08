@@ -15,7 +15,6 @@
 """Defining common flags used across all BERT models/applications."""
 
 from absl import flags
-import tensorflow as tf
 
 
 def define_common_bert_flags():
