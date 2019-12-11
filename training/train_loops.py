@@ -13,6 +13,7 @@ def run_custom_train_loop(bert_model, model, optimizer, loss_fn,
   if init_checkpoint:
     checkpoint = tf.train.Checkpoint(model=bert_model)
     checkpoint.restore(init_checkpoint).assert_nontrivial_match()
+    #checkpoint.restore(init_checkpoint).expect_partial()
 
   # initialize or load classifier model
   checkpoint = tf.train.Checkpoint(
