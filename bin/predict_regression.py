@@ -34,6 +34,8 @@ from dataset.bert_regression_dataset import BertRegressionDataset
 common_bert_flags.define_common_bert_flags()
 test_bert_flags.define_test_bert_flags()
 
+flags.DEFINE_boolean('use_sigmoid', True, '')
+
 FLAGS = flags.FLAGS
 
 
@@ -57,7 +59,8 @@ def main(_):
       bert_config,
       tf.float32,
       FLAGS.seq_length,
-      share_parameter_across_layers=FLAGS.share_parameter_across_layers))
+      share_parameter_across_layers=FLAGS.share_parameter_across_layers,
+      use_sigmoid=FLAGS.use_sigmoid))
 
   # initialize or load classifier model
   checkpoint = tf.train.Checkpoint(step=tf.Variable(1), model=model)

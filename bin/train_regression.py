@@ -37,6 +37,9 @@ from training.train_loops import run_custom_train_loop
 common_bert_flags.define_common_bert_flags()
 train_bert_flags.define_train_bert_flags()
 
+flags.DEFINE_enum('loss', 'mse', ['mse', 'huber'], 'loss')
+flags.DEFINE_float('delta', 1.0, 'delta of huber loss')
+
 FLAGS = flags.FLAGS
 
 
@@ -62,7 +65,8 @@ def main(_):
       bert_config,
       tf.float32,
       input_meta_data['max_seq_length'],
-      share_parameter_across_layers=FLAGS.share_parameter_across_layers))
+      share_parameter_across_layers=FLAGS.share_parameter_across_layers,
+      use_sigmoid=FLAGS.loss == 'mse'))
 
   # optimizer
   optimizer = adamw_polynomial_decay_warmup(
@@ -71,7 +75,7 @@ def main(_):
     fp16=FLAGS.fp16)
 
   # loss
-  loss_fn = get_loss_fn(loss='mse')
+  loss_fn = get_loss_fn(loss=FLAGS.loss, delta=FLAGS.delta)
 
   # run
   run_custom_train_loop(bert_model, model, optimizer, loss_fn,

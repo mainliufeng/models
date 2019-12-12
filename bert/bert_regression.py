@@ -27,7 +27,8 @@ def bert_regression_model(bert_config,
                           float_type,
                           max_seq_length,
                           final_layer_initializer=None,
-                          share_parameter_across_layers=False):
+                          share_parameter_across_layers=False,
+                          use_sigmoid=True):
   """BERT classifier model in functional API style.
 
   Construct a Keras model for predicting `num_labels` outputs from an input with
@@ -72,7 +73,8 @@ def bert_regression_model(bert_config,
       name='output',
       dtype=float_type)(
           output)
-  output = tf.nn.sigmoid(output)
+  if use_sigmoid:
+    output = tf.nn.sigmoid(output)
   return tf.keras.Model(
       inputs={
           'input_word_ids': input_word_ids,

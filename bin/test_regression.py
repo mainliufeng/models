@@ -35,6 +35,9 @@ from loss.losses import get_loss_fn
 common_bert_flags.define_common_bert_flags()
 test_bert_flags.define_test_bert_flags()
 
+flags.DEFINE_enum('loss', 'mse', ['mse', 'huber'], 'loss')
+flags.DEFINE_float('delta', 1.0, 'delta of huber loss')
+
 FLAGS = flags.FLAGS
 
 
@@ -60,10 +63,11 @@ def main(_):
       bert_config,
       tf.float32,
       FLAGS.seq_length,
-      share_parameter_across_layers=FLAGS.share_parameter_across_layers))
+      share_parameter_across_layers=FLAGS.share_parameter_across_layers,
+      use_sigmoid=FLAGS.loss == 'mse'))
 
   # loss
-  loss_fn = get_loss_fn(loss='mse')
+  loss_fn = get_loss_fn(loss=FLAGS.loss, delta=FLAGS.delta)
 
   model.compile(loss=loss_fn)
 

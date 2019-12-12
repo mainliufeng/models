@@ -12,6 +12,8 @@ def get_loss_fn(**config):
     return get_focal_loss_multi_v1(config)
   elif config.get('loss') == 'mse':
     return tf.keras.losses.MeanSquaredError()
+  elif config.get('loss') == 'huber':
+    return tf.keras.losses.Huber(delta=config.get('delta'))
   else:
     return get_sparse_categorical_cross_entropy_loss(config)
 
