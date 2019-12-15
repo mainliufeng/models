@@ -87,14 +87,15 @@ def main(_):
 
   # callbacks
   summary_dir = os.path.join(FLAGS.model_dir, 'summaries')
-  summary_callback = tf.keras.callbacks.TensorBoard(summary_dir)
   checkpoint_path = os.path.join(FLAGS.model_dir, 'checkpoint')
-  checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-      checkpoint_path, save_weights_only=True)
+  best_checkpoint_path = os.path.join(FLAGS.model_dir, 'best_checkpoint')
 
   custom_callbacks = [
-    summary_callback,
-    checkpoint_callback,
+    tf.keras.callbacks.TensorBoard(summary_dir),
+    tf.keras.callbacks.ModelCheckpoint(checkpoint_path, save_weights_only=True),
+    tf.keras.callbacks.ModelCheckpoint(
+      best_checkpoint_path, save_weights_only=True, save_best_only=True),
+    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3),
   ]
 
   model.fit(
