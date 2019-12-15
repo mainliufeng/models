@@ -1,7 +1,16 @@
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 from optimization.adamw import AdamWeightDecay
 from optimization.warmup import WarmUp
+
+
+def radam_decay_warmup(lr, total_steps, warmup_proportion=0.1, min_lr=0.0):
+  optimizer = tfa.optimizers.RectifiedAdam(
+    lr=lr, total_steps=total_steps,
+    warmup_proportion=warmup_proportion, min_lr=min_lr,
+  )
+  return optimizer
 
 
 def adamw_polynomial_decay_warmup(decay_steps, warmup_steps,

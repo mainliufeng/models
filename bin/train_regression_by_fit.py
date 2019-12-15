@@ -27,7 +27,7 @@ import tensorflow as tf
 
 import bert.bert_config
 from bert.bert_regression import bert_regression_model
-from optimization.optimizers import adamw_polynomial_decay_warmup
+from optimization.optimizers import adamw_polynomial_decay_warmup, radam_decay_warmup
 from dataset.bert_regression_dataset import BertRegressionDataset
 from loss.losses import get_loss_fn
 from flags import common_bert_flags, train_bert_flags
@@ -38,6 +38,7 @@ from training.train_loops import run_custom_train_loop
 common_bert_flags.define_common_bert_flags()
 train_bert_flags.define_train_bert_flags()
 
+flags.DEFINE_enum('optimizer', 'adamw', ['adamw', 'radam'], 'optimizer')
 flags.DEFINE_enum('loss', 'mse', ['mse', 'huber'], 'loss')
 flags.DEFINE_float('delta', 1.0, 'delta of huber loss')
 
@@ -70,10 +71,13 @@ def main(_):
       use_sigmoid=FLAGS.loss == 'mse'))
 
   # optimizer
-  optimizer = adamw_polynomial_decay_warmup(
-    num_train_steps, warmup_steps,
-    learning_rate=FLAGS.learning_rate,
-    fp16=FLAGS.fp16)
+  if FLAGS.optimizer == 'adamw':
+    optimizer = adamw_polynomial_decay_warmup(
+      num_train_steps, warmup_steps,
+      learning_rate=FLAGS.learning_rate,
+      fp16=FLAGS.fp16)
+  elif FLAGS.optimizer == 'radam':
+    optimizer = radam_decay_warmup(FLAGS.learning_rate, num_train_steps)
 
   # loss
   loss_fn = get_loss_fn(loss=FLAGS.loss, delta=FLAGS.delta)
