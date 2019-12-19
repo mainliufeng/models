@@ -27,7 +27,7 @@ import tensorflow as tf
 
 import bert.bert_config
 from bert.bert_regression import bert_regression_model
-from optimization.optimizers import adamw_polynomial_decay_warmup, radam_decay_warmup
+from optimization.optimizers import adamw_polynomial_decay_warmup, radam
 from dataset.bert_regression_dataset import BertRegressionDataset
 from loss.losses import get_loss_fn
 from flags import common_bert_flags, train_bert_flags
@@ -77,7 +77,7 @@ def main(_):
       learning_rate=FLAGS.learning_rate,
       fp16=FLAGS.fp16)
   elif FLAGS.optimizer == 'radam':
-    optimizer = radam_decay_warmup(FLAGS.learning_rate, num_train_steps)
+    optimizer = radam(FLAGS.learning_rate)
 
   # loss
   loss_fn = get_loss_fn(loss=FLAGS.loss, delta=FLAGS.delta)
